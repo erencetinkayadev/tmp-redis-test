@@ -65,7 +65,13 @@ spring:
     locator:
       discovery:
         enabled: true
-
+  redis:
+    database: 0
+    host: localhost
+    port: 16379
+    password: test
+    timeout: 60000
+    # docker run -p 16379:6379 -d redis:6.2.6 redis-server --requirepass "test"
 server:
   port: 8080
 

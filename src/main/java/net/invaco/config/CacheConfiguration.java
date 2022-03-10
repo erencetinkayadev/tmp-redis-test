@@ -1,25 +1,31 @@
 package net.invaco.config;
 
-import java.net.URI;
-import java.util.concurrent.TimeUnit;
-import javax.cache.configuration.MutableConfiguration;
-import javax.cache.expiry.CreatedExpiryPolicy;
-import javax.cache.expiry.Duration;
-import org.redisson.Redisson;
-import org.redisson.config.ClusterServersConfig;
-import org.redisson.config.Config;
-import org.redisson.config.SingleServerConfig;
-import org.redisson.jcache.configuration.RedissonConfiguration;
+import com.fasterxml.jackson.annotation.JsonTypeInfo;
+import com.fasterxml.jackson.databind.DeserializationFeature;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.SerializationFeature;
+import com.fasterxml.jackson.databind.jsontype.impl.LaissezFaireSubTypeValidator;
+import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
+import io.lettuce.core.RedisClient;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.autoconfigure.cache.JCacheManagerCustomizer;
+import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.boot.autoconfigure.data.redis.RedisProperties;
 import org.springframework.boot.info.BuildProperties;
 import org.springframework.boot.info.GitProperties;
 import org.springframework.cache.annotation.EnableCaching;
 import org.springframework.cache.interceptor.KeyGenerator;
-import org.springframework.context.annotation.*;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
-import tech.jhipster.config.JHipsterProperties;
+import org.springframework.context.annotation.Primary;
+import org.springframework.data.redis.connection.RedisConnectionFactory;
+import org.springframework.data.redis.connection.RedisPassword;
+import org.springframework.data.redis.connection.RedisStandaloneConfiguration;
+import org.springframework.data.redis.connection.lettuce.LettuceConnectionFactory;
+import org.springframework.data.redis.core.RedisTemplate;
+import org.springframework.data.redis.core.StringRedisTemplate;
+import org.springframework.data.redis.serializer.GenericJackson2JsonRedisSerializer;
+import org.springframework.data.redis.serializer.GenericToStringSerializer;
+import org.springframework.data.redis.serializer.StringRedisSerializer;
 import tech.jhipster.config.cache.PrefixedKeyGenerator;
 
 @Configuration
@@ -29,63 +35,85 @@ public class CacheConfiguration {
     private GitProperties gitProperties;
     private BuildProperties buildProperties;
 
-    @Bean
-    public javax.cache.configuration.Configuration<Object, Object> jcacheConfiguration(JHipsterProperties jHipsterProperties) {
-        MutableConfiguration<Object, Object> jcacheConfig = new MutableConfiguration<>();
+    private RedisProperties redisProperties;
 
-        URI redisUri = URI.create(jHipsterProperties.getCache().getRedis().getServer()[0]);
-
-        Config config = new Config();
-        if (jHipsterProperties.getCache().getRedis().isCluster()) {
-            ClusterServersConfig clusterServersConfig = config
-                .useClusterServers()
-                .setMasterConnectionPoolSize(jHipsterProperties.getCache().getRedis().getConnectionPoolSize())
-                .setMasterConnectionMinimumIdleSize(jHipsterProperties.getCache().getRedis().getConnectionMinimumIdleSize())
-                .setSubscriptionConnectionPoolSize(jHipsterProperties.getCache().getRedis().getSubscriptionConnectionPoolSize())
-                .addNodeAddress(jHipsterProperties.getCache().getRedis().getServer());
-
-            if (redisUri.getUserInfo() != null) {
-                clusterServersConfig.setPassword(redisUri.getUserInfo().substring(redisUri.getUserInfo().indexOf(':') + 1));
-            }
-        } else {
-            SingleServerConfig singleServerConfig = config
-                .useSingleServer()
-                .setConnectionPoolSize(jHipsterProperties.getCache().getRedis().getConnectionPoolSize())
-                .setConnectionMinimumIdleSize(jHipsterProperties.getCache().getRedis().getConnectionMinimumIdleSize())
-                .setSubscriptionConnectionPoolSize(jHipsterProperties.getCache().getRedis().getSubscriptionConnectionPoolSize())
-                .setAddress(jHipsterProperties.getCache().getRedis().getServer()[0]);
-
-            if (redisUri.getUserInfo() != null) {
-                singleServerConfig.setPassword(redisUri.getUserInfo().substring(redisUri.getUserInfo().indexOf(':') + 1));
-            }
-        }
-        jcacheConfig.setStatisticsEnabled(true);
-        jcacheConfig.setExpiryPolicyFactory(
-            CreatedExpiryPolicy.factoryOf(new Duration(TimeUnit.SECONDS, jHipsterProperties.getCache().getRedis().getExpiration()))
-        );
-        return RedissonConfiguration.fromInstance(Redisson.create(config), jcacheConfig);
+    /*  @Primary
+    @Bean(name = "lettucePrimaryReadWriteConnectionFactory")
+    public LettuceConnectionFactory lettucePrimaryReadWriteConnectionFactory() {
+        LettuceConnectionFactory lcf = new LettuceConnectionFactory(getStandaloneConfig(redisProperties));
+        lcf.setShareNativeConnection(false);
+        lcf.afterPropertiesSet();
+        return lcf;
     }
 
+    @Bean(name = "lettuceSecondaryReadWriteConnectionFactory")
+    public LettuceConnectionFactory lettuceSecondaryReadWriteConnectionFactory() {
+        LettuceConnectionFactory lcf = new LettuceConnectionFactory(getStandaloneConfig(redisProperties));
+        lcf.setShareNativeConnection(false);
+        lcf.afterPropertiesSet();
+        return lcf;
+    }*/
+
+    /*  @Primary
     @Bean
-    public JCacheManagerCustomizer cacheManagerCustomizer(javax.cache.configuration.Configuration<Object, Object> jcacheConfiguration) {
-        return cm -> {
-            createCache(cm, net.invaco.repository.UserRepository.USERS_BY_LOGIN_CACHE, jcacheConfiguration);
-            createCache(cm, net.invaco.repository.UserRepository.USERS_BY_EMAIL_CACHE, jcacheConfiguration);
-            // jhipster-needle-redis-add-entry
-        };
+    public LettuceConnectionFactory lettuceConnectionFactory() {
+        LettuceConnectionFactory lcf = new LettuceConnectionFactory(getStandaloneConfig(redisProperties));
+        lcf.setShareNativeConnection(false);
+        lcf.afterPropertiesSet();
+        return lcf;
+    }*/
+
+    @Bean(name = "redisTemplate1")
+    public StringRedisTemplate redisTransactionTemplate(RedisConnectionFactory connectionFactory) {
+        StringRedisTemplate template = new StringRedisTemplate(connectionFactory);
+        // explicitly enable transaction support
+        template.setEnableTransactionSupport(true);
+        return template;
     }
 
-    private void createCache(
-        javax.cache.CacheManager cm,
-        String cacheName,
-        javax.cache.configuration.Configuration<Object, Object> jcacheConfiguration
+    @Bean(name = "redisTemplate2")
+    public StringRedisTemplate redisTemplate(RedisConnectionFactory connectionFactory) {
+        StringRedisTemplate template = new StringRedisTemplate(connectionFactory);
+        return template;
+    }
+
+    @Primary
+    @Bean(name = "redisTemplatePrimary")
+    public RedisTemplate<String, Object> redisTemplatePrimary(
+        /* @Qualifier("lettucePrimaryReadWriteConnectionFactory") */RedisConnectionFactory connectionFactory,
+        ObjectMapper objectMapper,
+        JavaTimeModule javaTimeModule
     ) {
-        javax.cache.Cache<Object, Object> cache = cm.getCache(cacheName);
-        if (cache != null) {
-            cache.clear();
-        } else {
-            cm.createCache(cacheName, jcacheConfiguration);
-        }
+        objectMapper = objectMapperConfigure(objectMapper, javaTimeModule);
+
+        final RedisTemplate<String, Object> redisTemplate = new RedisTemplate<>();
+        redisTemplate.setKeySerializer(new StringRedisSerializer());
+        redisTemplate.setHashKeySerializer(new GenericToStringSerializer<>(Object.class));
+        redisTemplate.setHashValueSerializer(new GenericJackson2JsonRedisSerializer(objectMapper));
+        redisTemplate.setValueSerializer(new GenericJackson2JsonRedisSerializer(objectMapper));
+        redisTemplate.setConnectionFactory(connectionFactory);
+        redisTemplate.setEnableTransactionSupport(true);
+        redisTemplate.afterPropertiesSet();
+        return redisTemplate;
+    }
+
+    @Bean(name = "redisTemplateSecondary")
+    public RedisTemplate<String, Object> redisTemplateSecondary(
+        /* @Qualifier("lettuceSecondaryReadWriteConnectionFactory") */RedisConnectionFactory connectionFactory,
+        ObjectMapper objectMapper,
+        JavaTimeModule javaTimeModule
+    ) {
+        objectMapper = objectMapperConfigure(objectMapper, javaTimeModule);
+
+        final RedisTemplate<String, Object> redisTemplate = new RedisTemplate<>();
+        redisTemplate.setKeySerializer(new StringRedisSerializer());
+        redisTemplate.setHashKeySerializer(new GenericToStringSerializer<>(Object.class));
+        redisTemplate.setHashValueSerializer(new GenericJackson2JsonRedisSerializer(objectMapper));
+        redisTemplate.setValueSerializer(new GenericJackson2JsonRedisSerializer(objectMapper));
+        redisTemplate.setConnectionFactory(connectionFactory);
+        redisTemplate.setEnableTransactionSupport(false);
+        redisTemplate.afterPropertiesSet();
+        return redisTemplate;
     }
 
     @Autowired(required = false)
@@ -101,5 +129,37 @@ public class CacheConfiguration {
     @Bean
     public KeyGenerator keyGenerator() {
         return new PrefixedKeyGenerator(this.gitProperties, this.buildProperties);
+    }
+
+    @Autowired(required = false)
+    public void setRedisProperties(RedisProperties redisProperties) {
+        this.redisProperties = redisProperties;
+    }
+
+    private RedisStandaloneConfiguration getStandaloneConfig(RedisProperties redisProperties) {
+        RedisStandaloneConfiguration config = new RedisStandaloneConfiguration();
+        config.setHostName(redisProperties.getHost());
+        config.setPort(redisProperties.getPort());
+        config.setPassword(RedisPassword.of(redisProperties.getPassword()));
+        config.setDatabase(redisProperties.getDatabase());
+        return config;
+    }
+
+    private ObjectMapper objectMapperConfigure(ObjectMapper objectMapper, JavaTimeModule javaTimeModule) {
+        objectMapper = objectMapper.copy();
+        objectMapper.configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
+        objectMapper.configure(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS, false);
+        objectMapper.configure(SerializationFeature.FAIL_ON_EMPTY_BEANS, false);
+        objectMapper.configure(DeserializationFeature.FAIL_ON_INVALID_SUBTYPE, false);
+        //dateTime , JSR310 LocalDateTimeSerializer
+        objectMapper.configure(SerializationFeature.WRITE_DATE_KEYS_AS_TIMESTAMPS, false);
+        //, LocalDateTIme LocalDate , Jackson-data-JSR310
+        objectMapper.registerModule(javaTimeModule);
+        objectMapper.activateDefaultTyping(
+            LaissezFaireSubTypeValidator.instance,
+            ObjectMapper.DefaultTyping.NON_FINAL,
+            JsonTypeInfo.As.PROPERTY
+        );
+        return objectMapper;
     }
 }
